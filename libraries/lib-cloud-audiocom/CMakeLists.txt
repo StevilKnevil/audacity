@@ -44,6 +44,8 @@ set( SOURCES
    sync/ProjectUploadOperation.h
    sync/RemoteProjectSnapshot.cpp
    sync/RemoteProjectSnapshot.h
+   sync/ResumedSnaphotUploadOperation.cpp
+   sync/ResumedSnaphotUploadOperation.h
    sync/WavPackCompressor.cpp
    sync/WavPackCompressor.h
 )
@@ -55,6 +57,7 @@ PUBLIC
       lib-files-interface # FileNames
       lib-strings-interface # Languages
       lib-wave-track-interface
+      lib-project-file-io-interface # ProjectFileIOExtension
       rapidjson::rapidjson # Protocol is JSON based
       lib-concurrency-interface
    PRIVATE
