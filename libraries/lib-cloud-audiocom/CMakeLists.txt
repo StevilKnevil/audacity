@@ -10,6 +10,8 @@ def_vars()
 set( SOURCES
    CloudLibrarySettings.cpp
    CloudLibrarySettings.h
+   CloudSyncService.cpp
+   CloudSyncService.h
    NetworkUtils.cpp
    NetworkUtils.h
    OAuthService.cpp
@@ -31,10 +33,14 @@ set( SOURCES
    sync/CloudSyncError.h
    sync/DataUploader.cpp
    sync/DataUploader.h
+   sync/LocalProjectSnapshot.cpp
+   sync/LocalProjectSnapshot.h
    sync/MissingBlocksUploader.cpp
    sync/MissingBlocksUploader.h
    sync/MixdownUploader.cpp
    sync/MixdownUploader.h
+   sync/ProjectCloudExtension.cpp
+   sync/ProjectCloudExtension.h
    sync/ProjectUploadOperation.h
    sync/RemoteProjectSnapshot.cpp
    sync/RemoteProjectSnapshot.h
