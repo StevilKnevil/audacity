@@ -14,7 +14,6 @@
 
 #include "AuthorizationHandler.h"
 #include "BasicUI.h"
-#include "CloudLibrarySettings.h"
 #include "CloudSyncService.h"
 #include "CodeConversions.h"
 #include "Project.h"
@@ -29,7 +28,6 @@
 #include "ui/dialogs/ProjectVersionConflictDialog.h"
 #include "ui/dialogs/SyncFailedDialog.h"
 #include "ui/dialogs/UnsyncedProjectDialog.h"
-#include "ui/dialogs/UpdateCloudPreviewDialog.h"
 
 #include "sync/CloudSyncDTO.h"
 #include "sync/MixdownUploader.h"
@@ -292,15 +290,7 @@ void UploadMixdown(
 {
    auto& projectCloudExtension = ProjectCloudExtension::Get(project);
 
-   const auto frequency = MixdownGenerationFrequency.Read();
-
-   const auto forceMixdown =
-      frequency == 0 &&
-      projectCloudExtension.GetSavesCountSinceMixdown() % 5 == 0 &&
-      UpdateCloudPreviewDialog { &project }.ShowDialog() ==
-         UpdateCloudPreviewDialog::RenderPreviewIdentifier();
-
-   if (!projectCloudExtension.NeedsMixdownSync() && !forceMixdown)
+   if (!projectCloudExtension.NeedsMixdownSync())
       return;
 
    auto cancellationContext = concurrency::CancellationContext::Create();
