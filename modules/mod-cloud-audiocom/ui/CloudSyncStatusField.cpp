@@ -11,6 +11,8 @@
 
 #include "CloudSyncStatusField.h"
 
+#include <algorithm>
+
 #include <wx/bitmap.h>
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
@@ -91,8 +93,11 @@ StatusBarFieldItemRegistrator rateStatusBarField {
 };
 
 const auto CloudSyncFailedMessage   = XO("Failed.");
-const auto CloudSyncProgressMessage = XO("Syncing %d%%");
+const auto CloudSyncProgressMessage = XO("Syncing to audio.com... (%d%%)");
 const auto Padding                  = 2;
+const auto ProgressBarWidth         = 240;
+const auto ProgressBarHeight        = 10;
+const auto ProgressBarBorderSize    = 1;
 
 } // namespace
 
@@ -129,7 +134,7 @@ public:
                 Padding * 4;
       case State::Uploading:
          return mProgressBitmap->GetWidth() + mCloudSyncProgressMessageWidth +
-                Padding * 4;
+                ProgressBarWidth + Padding * 4;
       }
 
       return mSyncedBitmap->GetWidth() + Padding * 2;
@@ -176,6 +181,111 @@ public:
 
       gc->SetFont(GetFont(), GetForegroundColour());
       gc->DrawText(text, Padding + bitmapSize.x + 2 * Padding, 0);
+
+      if (mOwner.mState != State::Uploading)
+          return;
+
+      gc->SetAntialiasMode(wxANTIALIAS_NONE);
+
+      const auto progress = std::clamp(mOwner.mProgress, 0, 100);
+
+      const auto progressFilledPen =
+         gc->CreatePen(wxGraphicsPenInfo {}
+                          .Colour(wxColour(0xc3c3c3))
+                          .Width(ProgressBarBorderSize));
+
+      const auto progressEmptyPen =
+         gc->CreatePen(wxGraphicsPenInfo {}
+                          .Colour(wxColour(0xc3c3c3))
+                          .Width(ProgressBarBorderSize));
+      const auto zeroPen = gc->CreatePen(
+         wxGraphicsPenInfo {}.Width(0).Style(wxPENSTYLE_TRANSPARENT));
+
+      const auto progressFilledBrush = gc->CreateBrush(wxColour(0x3cf03c));
+      const auto progressEmptyBrush  = gc->CreateBrush(wxColour(0xffffff));
+
+      const auto progressBarBorderLeft =
+         Padding + bitmapSize.x + 2 * Padding + mCloudSyncProgressMessageWidth;
+
+      const auto progressBarBorderRight =
+         progressBarBorderLeft + ProgressBarWidth;
+
+      const auto progressBarBorderTop =
+         (widgetSize.y - ProgressBarHeight) / 2.0;
+
+      const auto progressBarBorderBottom =
+         progressBarBorderTop + ProgressBarHeight;
+
+      const auto filledWidth =
+         (ProgressBarWidth - ProgressBarBorderSize * 2) * progress / 100;
+
+      const auto progressBarFillLeft =
+         progressBarBorderLeft + ProgressBarBorderSize;
+      const auto progressBarFillRight = progressBarFillLeft + filledWidth;
+
+      const auto progressBarEmptyLeft =
+         progressBarFillRight + (progress > 0 ? 1 : 0);
+      const auto progressBarEmptyRight =
+         progressBarBorderRight - ProgressBarBorderSize;
+
+      const auto filledHeight = ProgressBarHeight - ProgressBarBorderSize;
+
+      // Draw border
+      if (progress == 0)
+         gc->SetPen(progressEmptyPen);
+      else
+         gc->SetPen(progressFilledPen);
+
+      gc->StrokeLine(
+         progressBarBorderLeft, progressBarBorderTop, progressBarBorderLeft,
+         progressBarBorderBottom);
+
+      if (progress > 0)
+      {
+         gc->StrokeLine(
+            progressBarFillLeft, progressBarBorderTop, progressBarFillRight,
+            progressBarBorderTop);
+
+         gc->StrokeLine(
+            progressBarFillLeft, progressBarBorderBottom, progressBarFillRight,
+            progressBarBorderBottom);
+
+         gc->SetPen(zeroPen);
+         gc->SetBrush(progressFilledBrush);
+
+         gc->DrawRectangle(
+            progressBarFillLeft, progressBarBorderTop + ProgressBarBorderSize,
+            progressBarFillRight - progressBarFillLeft + 1, filledHeight);
+      }
+
+      if (progress < 100)
+      {
+         gc->SetPen(progressEmptyPen);
+
+         gc->StrokeLine(
+            progressBarEmptyLeft, progressBarBorderTop, progressBarEmptyRight,
+            progressBarBorderTop);
+
+         gc->StrokeLine(
+            progressBarEmptyLeft, progressBarBorderBottom,
+            progressBarEmptyRight, progressBarBorderBottom);
+
+         gc->SetPen(zeroPen);
+         gc->SetBrush(progressEmptyBrush);
+
+         gc->DrawRectangle(
+            progressBarEmptyLeft, progressBarBorderTop + ProgressBarBorderSize,
+            progressBarEmptyRight - progressBarEmptyLeft + 1, filledHeight);
+      }
+
+      if (progress == 100)
+         gc->SetPen(progressFilledPen);
+      else
+         gc->SetPen(progressEmptyPen);
+
+      gc->StrokeLine(
+         progressBarBorderRight, progressBarBorderTop, progressBarBorderRight,
+         progressBarBorderBottom);
    }
 
    void UpdatePrefs() override
@@ -262,7 +372,8 @@ void CloudSyncStatusField::MarkDirty()
 void CloudSyncStatusField::OnCloudStatusChanged(
    const CloudStatusChangedMessage& message)
 {
-   mState = [](ProjectSyncStatus status) {
+   mState = [](ProjectSyncStatus status)
+   {
       switch (status)
       {
       case ProjectSyncStatus::Local:
