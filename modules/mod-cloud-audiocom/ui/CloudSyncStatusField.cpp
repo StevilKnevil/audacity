@@ -99,6 +99,12 @@ const auto ProgressBarWidth         = 240;
 const auto ProgressBarHeight        = 10;
 const auto ProgressBarBorderSize    = 1;
 
+#if __WXMAC__
+const auto StatusFieldPadding = 20;
+#else
+const auto StatusFieldPadding = 0;
+#endif
+
 } // namespace
 
 class CloudSyncStatusField::StatusWidget final :
@@ -338,7 +344,7 @@ CloudSyncStatusField::Get(const AudacityProject& project)
 int CloudSyncStatusField::GetWidth() const
 {
    return mCloudExtension.IsCloudProject() ?
-             GetStatusWidget().GetPreferredWidth(mState) :
+             (GetStatusWidget().GetPreferredWidth(mState) + StatusFieldPadding) :
              0;
 }
 
