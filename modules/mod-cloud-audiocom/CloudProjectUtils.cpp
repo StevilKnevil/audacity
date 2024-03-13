@@ -14,11 +14,11 @@
 
 #include "AuthorizationHandler.h"
 #include "BasicUI.h"
+#include "CloudProjectFileIOExtensions.h"
 #include "CloudSyncService.h"
 #include "CodeConversions.h"
 #include "Project.h"
 #include "ProjectFileIO.h"
-#include "ProjectFileManager.h"
 #include "ProjectManager.h"
 #include "ProjectWindow.h"
 #include "ServiceConfig.h"
@@ -239,19 +239,6 @@ bool SyncCloudProject(
    return true;
 }
 
-void SaveToCloud(AudacityProject& project, UploadMode mode)
-{
-   ASSERT_MAIN_THREAD();
-
-   auto& projectCloudExtension = ProjectCloudExtension::Get(project);
-
-   if (!projectCloudExtension.IsCloudProject())
-      projectCloudExtension.MarkPendingCloudSave();
-
-   projectCloudExtension.SetUploadModeForNextSave(mode);
-   ProjectFileManager::Get(project).Save();
-}
-
 bool HandleProjectLink(std::string_view uri)
 {
    ASSERT_MAIN_THREAD();
@@ -285,65 +272,59 @@ bool HandleProjectLink(std::string_view uri)
 }
 
 void UploadMixdown(
-   AudacityProject& project, const UploadUrls& urls,
-   std::function<void(AudacityProject&, MixdownState)> onComleted)
+   AudacityProject& project,
+   std::function<void(AudacityProject&, MixdownState)> onComplete)
 {
-   auto& projectCloudExtension = ProjectCloudExtension::Get(project);
-
-   if (!projectCloudExtension.NeedsMixdownSync())
-      return;
-
-   auto cancellationContext = concurrency::CancellationContext::Create();
-
-   auto progressDialog = BasicUI::MakeProgress(
-      XO("Save to audio.com"), XO("Generating mixdown..."),
-      BasicUI::ProgressShowCancel);
-
-   auto mixdownUploader = MixdownUploader::Upload(
-      cancellationContext, GetServiceConfig(), project,
-      [progressDialog = progressDialog.get(),
-       cancellationContext](auto progress)
+   SaveToCloud(
+      project, UploadMode::Normal,
+      [&project, onComplete = std::move(onComplete)](const auto& response)
       {
-         if (
-            progressDialog->Poll(
-               static_cast<unsigned>(progress * 10000), 10000) !=
-            BasicUI::ProgressResult::Success)
-            cancellationContext->Cancel();
+         auto& projectCloudExtension = ProjectCloudExtension::Get(project);
+
+         auto cancellationContext = concurrency::CancellationContext::Create();
+
+         auto progressDialog = BasicUI::MakeProgress(
+            XO("Save to audio.com"), XO("Generating audio preview..."),
+            BasicUI::ProgressShowCancel);
+
+         auto mixdownUploader = MixdownUploader::Upload(
+            cancellationContext, GetServiceConfig(), project,
+            [progressDialog = progressDialog.get(),
+             cancellationContext](auto progress)
+            {
+               if (
+                  progressDialog->Poll(
+                     static_cast<unsigned>(progress * 10000), 10000) !=
+                  BasicUI::ProgressResult::Success)
+                  cancellationContext->Cancel();
+            });
+
+         mixdownUploader->SetUrls(response.SyncState.MixdownUrls);
+
+         auto subscription = projectCloudExtension.SubscribeStatusChanged(
+            [progressDialog = progressDialog.get(), mixdownUploader,
+             cancellationContext](const CloudStatusChangedMessage& message)
+            {
+               if (message.Status != ProjectSyncStatus::Failed)
+                  return;
+
+               cancellationContext->Cancel();
+            },
+            true);
+
+         auto future = mixdownUploader->GetResultFuture();
+
+         while (future.wait_for(std::chrono::milliseconds(50)) !=
+                std::future_status::ready)
+            BasicUI::Yield();
+
+         auto result = future.get();
+
+         progressDialog.reset();
+
+         if (onComplete)
+            onComplete(project, result.State);
       });
-
-   mixdownUploader->SetUrls(urls);
-
-   auto subscription = projectCloudExtension.SubscribeStatusChanged(
-      [progressDialog = progressDialog.get(), mixdownUploader,
-       cancellationContext](const CloudStatusChangedMessage& message)
-      {
-         if (message.Status != ProjectSyncStatus::Failed)
-            return;
-
-         cancellationContext->Cancel();
-      },
-      true);
-
-   auto future = mixdownUploader->GetResultFuture();
-
-   while (future.wait_for(std::chrono::milliseconds(50)) !=
-          std::future_status::ready)
-      BasicUI::Yield();
-
-   auto result = future.get();
-
-   if (result.State == MixdownState::Succeeded)
-      projectCloudExtension.MixdownSynced();
-
-   progressDialog.reset();
-   if (onComleted)
-      onComleted(project, result.State);
-}
-
-bool ResaveLocally(AudacityProject& project)
-{
-   // TODO: Delete the old file immediately?
-   return ProjectFileManager::Get(project).SaveAs();
 }
 
 void ReopenProject(AudacityProject& project)

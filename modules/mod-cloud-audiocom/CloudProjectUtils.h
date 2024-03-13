@@ -13,8 +13,6 @@
 #include <functional>
 #include <string_view>
 
-#include "sync/ProjectUploadOperation.h"
-
 class AudacityProject;
 
 namespace audacity::cloud::audiocom::sync
@@ -29,15 +27,11 @@ void OpenProjectFromCloud(
 bool SyncCloudProject(
    AudacityProject& project, std::string_view path, bool force = false);
 
-void SaveToCloud(AudacityProject& project, UploadMode mode);
-
 bool HandleProjectLink(std::string_view link);
 
 void UploadMixdown(
-   AudacityProject& project, const UploadUrls& urls,
-   std::function<void(AudacityProject&, MixdownState)> onCompleted);
-
-bool ResaveLocally(AudacityProject& project);
+   AudacityProject& project,
+   std::function<void(AudacityProject&, MixdownState)> onComplete);
 
 void ReopenProject(AudacityProject& project);
 } // namespace audacity::cloud::audiocom::sync

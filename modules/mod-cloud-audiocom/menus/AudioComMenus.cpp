@@ -3,15 +3,19 @@
 
   Audacity: A Digital Audio Editor
 
-  Menus.cpp
+  AudioComMenus.cpp
 
   Dmitry Vedenko
 
 **********************************************************************/
 
+#include "BasicUI.h"
+#include "CloudProjectFileIOExtensions.h"
 #include "CloudProjectUtils.h"
 #include "CommandContext.h"
 #include "MenuRegistry.h"
+
+#include "sync/MixdownUploader.h"
 #include "sync/ProjectCloudExtension.h"
 
 #include "ProjectWindow.h"
@@ -41,8 +45,18 @@ void OnOpenFromCloud(const CommandContext& context)
 
 void OnUpdateMixdown(const CommandContext& context)
 {
-   ProjectCloudExtension::Get(context.project).MarkNeedsMixdownSync();
-   SaveToCloud(context.project, UploadMode::Normal);
+   UploadMixdown(
+      context.project,
+      [](auto& project, auto state)
+      {
+         if (state != MixdownState::Succeeded)
+            return;
+
+         auto& projectCloudExtension = ProjectCloudExtension::Get(project);
+
+         BasicUI::OpenInDefaultBrowser(
+            projectCloudExtension.GetCloudProjectPage());
+      });
 }
 
 void OnShareAudio(const CommandContext& context)

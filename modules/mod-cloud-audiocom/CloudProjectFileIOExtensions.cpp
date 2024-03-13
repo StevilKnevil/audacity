@@ -3,31 +3,32 @@
 
   Audacity: A Digital Audio Editor
 
-  CloudProjectFileIOExtensions.h
+  CloudProjectFileIOExtensions.cpp
 
   Dmitry Vedenko
 
 **********************************************************************/
 
+#include "CloudProjectFileIOExtensions.h"
+
 #include "AuthorizationHandler.h"
-#include "CloudProjectUtils.h"
 #include "CloudLibrarySettings.h"
+#include "CloudProjectUtils.h"
 
 #include "OAuthService.h"
 #include "ServiceConfig.h"
 #include "UserService.h"
 
 #include "ui/ProjectCloudUIExtension.h"
+#include "ui/dialogs/CloudLocationDialog.h"
 #include "ui/dialogs/CloudProjectPropertiesDialog.h"
 #include "ui/dialogs/LinkFailedDialog.h"
 #include "ui/dialogs/MixdownPropertiesDialog.h"
-#include "ui/dialogs/CloudLocationDialog.h"
 #include "ui/dialogs/SyncInBackroundDialog.h"
 #include "ui/dialogs/SyncSucceededDialog.h"
 
 #include "sync/CloudSyncDTO.h"
 #include "sync/LocalProjectSnapshot.h"
-#include "sync/MixdownUploader.h"
 #include "sync/ProjectCloudExtension.h"
 #include "sync/ResumedSnaphotUploadOperation.h"
 
@@ -36,6 +37,7 @@
 #include "Project.h"
 #include "ProjectFileIO.h"
 #include "ProjectFileIOExtension.h"
+#include "ProjectFileManager.h"
 #include "ProjectWindow.h"
 
 namespace
@@ -45,8 +47,6 @@ using namespace audacity::cloud::audiocom::sync;
 
 class IOExtension final : public ProjectFileIOExtension
 {
-   std::optional<UploadUrls> LastMixdownUrls;
-
    OnOpenAction
    OnOpen(AudacityProject& project, const std::string& path) override
    {
@@ -67,14 +67,14 @@ class IOExtension final : public ProjectFileIOExtension
 
    OnSaveAction CreateSnapshot(AudacityProject& project, std::string name)
    {
-      LastMixdownUrls = std::nullopt;
-
       auto& projectCloudExtension = ProjectCloudExtension::Get(project);
 
       projectCloudExtension.OnSyncStarted();
 
       auto future = LocalProjectSnapshot::Create(
-         GetServiceConfig(), GetOAuthService(), projectCloudExtension, name);
+         GetServiceConfig(), GetOAuthService(), projectCloudExtension, name, mUploadMode);
+
+      mUploadMode = UploadMode::Normal;
 
       // Do we need UI here?
       // while (future.wait_for(std::chrono::milliseconds(50)) !=
@@ -88,7 +88,11 @@ class IOExtension final : public ProjectFileIOExtension
          // Errors would be handled by the UI extension
          return OnSaveAction::Cancelled;
 
-      LastMixdownUrls = result->SyncState.MixdownUrls;
+      if (mSnapshotCallback)
+      {
+         mSnapshotCallback(*result);
+         mSnapshotCallback = {};
+      }
 
       return OnSaveAction::Continue;
    }
@@ -126,15 +130,18 @@ class IOExtension final : public ProjectFileIOExtension
       auto& projectFileIO         = ProjectFileIO::Get(project);
 
       const bool isTemporary      = projectFileIO.IsTemporary();
-      const bool pendingCloudSave = projectCloudExtension.IsPendingCloudSave();
       const bool isCloudProject   = projectCloudExtension.IsCloudProject();
+
+      const bool pendingCloudSave = mForceCloudSave;
+      mForceCloudSave             = false;
 
       auto parent = &ProjectWindow::Get(project);
 
       // Check location first
       if (isTemporary && !pendingCloudSave)
       {
-         CloudLocationDialog cloudLocationDialog { parent, LocationDialogType::Save };
+         CloudLocationDialog cloudLocationDialog { parent,
+                                                   LocationDialogType::Save };
          const auto saveAction = cloudLocationDialog.ShowDialog();
 
          // Not doing a cloud save
@@ -200,50 +207,42 @@ class IOExtension final : public ProjectFileIOExtension
       auto& projectCloudExtension = ProjectCloudExtension::Get(project);
       projectCloudExtension.OnUpdateSaved(serializer);
 
-      if (LastMixdownUrls)
-         UploadMixdown(
-            project, *LastMixdownUrls,
-            [savesCount = projectCloudExtension.GetSavesCount(),
-             &projectCloudExtension](auto& project, auto state)
-            {
-               if (savesCount > 1 || state == MixdownState::Failed)
-                  return;
+      const int savesCount = projectCloudExtension.GetSavesCount();
 
-               SyncInBackroundDialog { &project }.ShowDialog();
+      if (savesCount > 1)
+         return;
 
-               ShowDialogOn(
-                  [weakProject = project.weak_from_this()]
-                  {
-                     auto project = weakProject.lock();
+      SyncInBackroundDialog { &project }.ShowDialog();
 
-                     if (!project)
-                        return true;
+      ShowDialogOn(
+         [weakProject = project.weak_from_this()]
+         {
+            auto project = weakProject.lock();
 
-                     return !ProjectCloudExtension::Get(*project).IsSyncing();
-                  },
-                  [weakProject = project.weak_from_this()]
-                  {
-                     auto project = weakProject.lock();
+            if (!project)
+               return true;
 
-                     if (!project)
-                        return;
+            return !ProjectCloudExtension::Get(*project).IsSyncing();
+         },
+         [weakProject = project.weak_from_this()]
+         {
+            auto project = weakProject.lock();
 
-                     if (
-                        ProjectCloudExtension::Get(*project)
-                           .GetCurrentSyncStatus() != ProjectSyncStatus::Synced)
-                        return;
+            if (!project)
+               return;
 
-                     const auto result =
-                        SyncSucceededDialog { project.get() }.ShowDialog();
+            if (
+               ProjectCloudExtension::Get(*project).GetCurrentSyncStatus() !=
+               ProjectSyncStatus::Synced)
+               return;
 
-                     if (
-                         result ==
-                        SyncSucceededDialog::ViewOnlineIdentifier())
-                        BasicUI::OpenInDefaultBrowser(audacity::ToWXString(
-                           ProjectCloudExtension::Get(*project)
-                              .GetCloudProjectPage()));
-                  });
-            });
+            const auto result =
+               SyncSucceededDialog { project.get() }.ShowDialog();
+
+            if (result == SyncSucceededDialog::ViewOnlineIdentifier())
+               BasicUI::OpenInDefaultBrowser(audacity::ToWXString(
+                  ProjectCloudExtension::Get(*project).GetCloudProjectPage()));
+         });
    }
 
    bool
@@ -251,6 +250,30 @@ class IOExtension final : public ProjectFileIOExtension
    {
       return ProjectCloudExtension::Get(project).IsBlockLocked(blockId);
    }
+
+public:
+   void ForceCloudSave()
+   {
+      mForceCloudSave = true;
+   }
+
+   void SetUploadModeForNextSave(UploadMode mode)
+   {
+      mUploadMode = mode;
+   }
+
+   void SetSnapshotCallbackForNextSave(CreateSnapshotCallback callback)
+   {
+      mSnapshotCallback = std::move(callback);
+   }
+
+private:
+   // Snapshot callback for the next save
+   CreateSnapshotCallback mSnapshotCallback;
+   // Upload mode for the next save
+   UploadMode mUploadMode { UploadMode::Normal };
+   // Forces the next save to be a cloud save
+   bool mForceCloudSave {};
 };
 
 IOExtension& GetExtension()
@@ -261,3 +284,30 @@ IOExtension& GetExtension()
 
 ProjectFileIOExtensionRegistry::Extension extension { GetExtension() };
 } // namespace
+
+namespace audacity::cloud::audiocom::sync
+{
+void SaveToCloud(
+   AudacityProject& project, UploadMode mode,
+   CreateSnapshotCallback snapshotCallback)
+{
+   ASSERT_MAIN_THREAD();
+
+   auto& projectCloudExtension = ProjectCloudExtension::Get(project);
+
+   auto& ioExtension = GetExtension();
+
+   ioExtension.ForceCloudSave();
+   ioExtension.SetUploadModeForNextSave(mode);
+   ioExtension.SetSnapshotCallbackForNextSave(std::move(snapshotCallback));
+
+   ProjectFileManager::Get(project).Save();
+}
+
+bool ResaveLocally(AudacityProject& project)
+{
+   // TODO: Delete the old file immediately?
+   return ProjectFileManager::Get(project).SaveAs();
+}
+
+} // namespace audacity::cloud::audiocom::sync

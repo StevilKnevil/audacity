@@ -209,12 +209,13 @@ struct LocalProjectSnapshot::ProjectBlocksLock final : private BlockHashCache
 
 LocalProjectSnapshot::LocalProjectSnapshot(
    Tag, const ServiceConfig& config, const OAuthService& oauthService,
-   ProjectCloudExtension& extension, std::string name)
+   ProjectCloudExtension& extension, std::string name, UploadMode mode)
     : mProjectCloudExtension { extension }
     , mWeakProject { extension.GetProject() }
     , mServiceConfig { config }
     , mOAuthService { oauthService }
     , mProjectName { std::move(name) }
+    , mUploadMode { mode }
     , mCancellationContext { concurrency::CancellationContext::Create() }
 {
 }
@@ -225,7 +226,7 @@ LocalProjectSnapshot::~LocalProjectSnapshot()
 
 LocalProjectSnapshot::Future LocalProjectSnapshot::Create(
    const ServiceConfig& config, const OAuthService& oauthService,
-   ProjectCloudExtension& extension, std::string name)
+   ProjectCloudExtension& extension, std::string name, UploadMode mode)
 {
    auto project = extension.GetProject().lock();
 
@@ -233,7 +234,7 @@ LocalProjectSnapshot::Future LocalProjectSnapshot::Create(
       return {};
 
    auto snapshot = std::make_shared<LocalProjectSnapshot>(
-      Tag {}, config, oauthService, extension, std::move(name));
+      Tag {}, config, oauthService, extension, std::move(name), mode);
 
    snapshot->mProjectCloudExtension.OnUploadOperationCreated(snapshot);
 
@@ -267,9 +268,8 @@ std::shared_ptr<AudacityProject> LocalProjectSnapshot::GetProject()
    return mWeakProject.lock();
 }
 
-void LocalProjectSnapshot::Start(UploadMode mode)
+void LocalProjectSnapshot::Start()
 {
-   mUploadMode = mode;
    UpdateProjectSnapshot();
 }
 

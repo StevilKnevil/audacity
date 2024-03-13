@@ -21,9 +21,10 @@
 #include "dialogs/ProjectVersionConflictDialog.h"
 #include "dialogs/SyncFailedDialog.h"
 #include "dialogs/WaitForActionDialog.h"
-#include "dialogs/SyncSucceededDialog.h"
 
+#include "CloudProjectFileIOExtensions.h"
 #include "CloudProjectUtils.h"
+
 #include "OAuthService.h"
 #include "ServiceConfig.h"
 #include "UserService.h"

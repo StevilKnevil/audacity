@@ -206,7 +206,7 @@ private:
          });
    }
 
-   void Start(UploadMode mode) override
+   void Start() override
    {
       if (mPendingProjectBlobData.has_value())
          UploadSnapshot();

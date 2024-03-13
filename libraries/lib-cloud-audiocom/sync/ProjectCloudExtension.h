@@ -102,25 +102,11 @@ public:
 
    std::weak_ptr<AudacityProject> GetProject() const;
 
-   void SuppressAutoDownload();
-
-   bool GetAutoDownloadSuppressed() const;
-
-   void MarkNeedsMixdownSync();
-   bool NeedsMixdownSync() const;
-   void MixdownSynced();
-
    int64_t GetSavesCount() const;
-   int64_t GetSavesCountSinceMixdown() const;
 
    Observer::Subscription SubscribeStatusChanged(
       std::function<void(const CloudStatusChangedMessage&)> callback,
       bool onUIThread);
-
-   void MarkPendingCloudSave();
-   bool IsPendingCloudSave() const;
-
-   void SetUploadModeForNextSave(UploadMode mode);
 
    std::string GetCloudProjectPage() const;
 
@@ -163,11 +149,6 @@ private:
    std::unique_ptr<CloudStatusChangedNotifier> mAsyncStateNotifier;
    std::unique_ptr<CloudStatusChangedNotifier> mUIStateNotifier;
    std::atomic<bool> mUINotificationPending { false };
+}; // class ProjectCloudExtension
 
-   UploadMode mNextUploadMode { UploadMode::Normal };
-
-   bool mSuppressAutoDownload { false };
-   bool mPendingCloudSave { false };
-   bool mNeedsMixdownSync { false };
-};
 } // namespace audacity::cloud::audiocom::sync

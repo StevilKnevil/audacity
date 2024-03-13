@@ -142,11 +142,6 @@ void ProjectCloudExtension::OnLoad()
 
 void ProjectCloudExtension::OnSyncStarted()
 {
-   mPendingCloudSave = false;
-
-   if (!mNeedsMixdownSync && !IsCloudProject())
-      mNeedsMixdownSync = true;
-
    auto element = std::make_shared<UploadQueueElement>();
 
    element->Data.Tracks = TrackList::Create(nullptr);
@@ -177,7 +172,7 @@ void cloud::audiocom::sync::ProjectCloudExtension::OnSyncResumed(
       mUploadQueue.push_back(element);
    }
 
-   uploadOperation->Start(UploadMode::Normal);
+   uploadOperation->Start();
    UnsafeUpdateProgress();
 }
 
@@ -204,14 +199,7 @@ void ProjectCloudExtension::OnBlocksHashed(
       return;
 
    element->ReadyForUpload = true;
-
-   auto mode = UploadMode::Normal;
-   {
-      auto lock = std::lock_guard { mIdentifiersMutex };
-      std::swap(mode, mNextUploadMode);
-   }
-
-   uploadOperation.Start(mode);
+   uploadOperation.Start();
 }
 
 void ProjectCloudExtension::OnSnapshotCreated(
@@ -426,70 +414,6 @@ std::weak_ptr<AudacityProject> ProjectCloudExtension::GetProject() const
    return mProject.weak_from_this();
 }
 
-void ProjectCloudExtension::SuppressAutoDownload()
-{
-   mSuppressAutoDownload = true;
-}
-
-bool ProjectCloudExtension::GetAutoDownloadSuppressed() const
-{
-   return mSuppressAutoDownload;
-}
-
-void ProjectCloudExtension::MarkNeedsMixdownSync()
-{
-   mNeedsMixdownSync = true;
-}
-
-bool ProjectCloudExtension::NeedsMixdownSync() const
-{
-   if (mNeedsMixdownSync)
-      return true;
-
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   if (mProjectId.empty())
-      return false;
-
-   auto& cloudDatabase = CloudProjectsDatabase::Get();
-   auto dbData         = cloudDatabase.GetProjectData(mProjectId);
-
-   if (!dbData)
-      return false;
-
-   if (dbData->LastAudioPreview == 0)
-      return true;
-
-   const auto frequency = MixdownGenerationFrequency.Read();
-
-   if (frequency == 0)
-      return false;
-
-   const auto savesSinceLastMixdown =
-      dbData->SavesCount - dbData->LastAudioPreview;
-
-   return savesSinceLastMixdown >= frequency;
-}
-
-void ProjectCloudExtension::MixdownSynced()
-{
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   if (mProjectId.empty())
-      return;
-
-   mNeedsMixdownSync = false;
-
-   auto& cloudDatabase = CloudProjectsDatabase::Get();
-   auto dbData         = cloudDatabase.GetProjectData(mProjectId);
-
-   if (!dbData)
-      return;
-
-   dbData->LastAudioPreview = dbData->SavesCount;
-   cloudDatabase.UpdateProjectData(*dbData);
-}
-
 int64_t ProjectCloudExtension::GetSavesCount() const
 {
    auto lock = std::lock_guard { mIdentifiersMutex };
@@ -504,22 +428,6 @@ int64_t ProjectCloudExtension::GetSavesCount() const
       return 0;
 
    return dbData->SavesCount;
-}
-
-int64_t ProjectCloudExtension::GetSavesCountSinceMixdown() const
-{
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   if (mProjectId.empty())
-      return 0;
-
-   auto& cloudDatabase = CloudProjectsDatabase::Get();
-   auto dbData         = cloudDatabase.GetProjectData(mProjectId);
-
-   if (!dbData)
-      return 0;
-
-   return dbData->SavesCount - dbData->LastAudioPreview;
 }
 
 Observer::Subscription ProjectCloudExtension::SubscribeStatusChanged(
@@ -670,27 +578,6 @@ void ProjectCloudExtension::OnProjectPathChanged()
 
    if (mProjectId.empty() && wasCloudProject)
       Publish({ ProjectSyncStatus::Local }, false);
-}
-
-void ProjectCloudExtension::MarkPendingCloudSave()
-{
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   mPendingCloudSave = true;
-}
-
-bool ProjectCloudExtension::IsPendingCloudSave() const
-{
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   return mPendingCloudSave;
-}
-
-void ProjectCloudExtension::SetUploadModeForNextSave(UploadMode mode)
-{
-   auto lock = std::lock_guard { mIdentifiersMutex };
-
-   mNextUploadMode = mode;
 }
 
 std::string ProjectCloudExtension::GetCloudProjectPage() const

@@ -58,18 +58,18 @@ public:
 
    LocalProjectSnapshot(
       Tag, const ServiceConfig& config, const OAuthService& oauthService,
-      ProjectCloudExtension& extension, std::string name);
+      ProjectCloudExtension& extension, std::string name, UploadMode mode);
    ~LocalProjectSnapshot();
 
    static Future Create(
       const ServiceConfig& config, const OAuthService& oauthService,
-      ProjectCloudExtension& extension, std::string name);
+      ProjectCloudExtension& extension, std::string name, UploadMode mode);
 
    bool IsCompleted() const override;
 
    std::shared_ptr<AudacityProject> GetProject();
 
-   void Start(UploadMode mode) override;
+   void Start() override;
    void SetUploadData(const ProjectUploadData& data) override;
    void Cancel() override;
 
