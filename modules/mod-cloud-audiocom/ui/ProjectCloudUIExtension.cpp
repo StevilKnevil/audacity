@@ -68,20 +68,6 @@ ProjectCloudUIExtension::Get(const AudacityProject& project)
 void ProjectCloudUIExtension::SetUploadProgress(double progress)
 {
    mProgress = progress;
-
-   if (mProgressDialog == nullptr)
-      return;
-
-   const auto result = mProgressDialog->Poll(progress * 10000, 10000);
-
-   if (result == BasicUI::ProgressResult::Cancelled)
-   {
-      mClosingCancelled = true;
-      mProgressDialog.reset();
-   }
-
-   if (result == BasicUI::ProgressResult::Stopped)
-      ProjectCloudExtension::Get(mProject).CancelSync();
 }
 
 bool ProjectCloudUIExtension::AllowClosing()
@@ -95,6 +81,17 @@ bool ProjectCloudUIExtension::AllowClosing()
             XO("Project is syncing with audio.com. Do you want to stop the sync process?"),
             BasicUI::ProgressShowCancel | BasicUI::ProgressShowStop);
       }
+
+      const auto result = mProgressDialog->Poll(mProgress * 10000, 10000);
+
+      if (result == BasicUI::ProgressResult::Cancelled)
+      {
+         mClosingCancelled = true;
+         mProgressDialog.reset();
+      }
+
+      if (result == BasicUI::ProgressResult::Stopped)
+         ProjectCloudExtension::Get(mProject).CancelSync();
 
       BasicUI::Yield();
    }
