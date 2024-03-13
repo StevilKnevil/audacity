@@ -22,8 +22,6 @@ set( SOURCES
    ui/dialogs/LinkSucceededDialog.h
    ui/dialogs/LinkWithTokenDialog.cpp
    ui/dialogs/LinkWithTokenDialog.h
-   ui/dialogs/MixdownPropertiesDialog.cpp
-   ui/dialogs/MixdownPropertiesDialog.h
    ui/dialogs/NotCloudProjectDialog.cpp
    ui/dialogs/NotCloudProjectDialog.h
    ui/dialogs/ProjectLimitDialog.cpp
@@ -50,8 +48,6 @@ set( SOURCES
    ui/AudioComPrefsPanel.cpp
    ui/CloudSyncStatusField.cpp
    ui/CloudSyncStatusField.h
-   ui/MixdownPrefsPanel.cpp
-   ui/MixdownPrefsPanel.h
    ui/ProjectCloudUIExtension.cpp
    ui/ProjectCloudUIExtension.h
    ui/ShareAudioToolbar.cpp

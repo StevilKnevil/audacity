@@ -20,7 +20,6 @@
 
 #include "CloudLibrarySettings.h"
 #include "CloudModuleSettings.h"
-#include "MixdownPrefsPanel.h"
 #include "ShuttleGui.h"
 #include "UserPanel.h"
 
@@ -50,7 +49,6 @@ public:
       PopulateOrExchange(S);
 
       CloudProjectsSavePath.Invalidate();
-      MixdownGenerationFrequency.Invalidate();
       DaysToKeepFiles.Invalidate();
 
       // Enum settings are not cacheable, so we need to invalidate them
@@ -74,21 +72,6 @@ public:
             S.AddWindow(safenew UserPanel { GetServiceConfig(),
                                             GetOAuthService(), GetUserService(),
                                             true, S.GetParent() }, wxEXPAND);
-         }
-         S.EndStatic();
-
-         S.StartStatic(XO("Generate mixdown for audio.com playback"));
-         {
-            S.SetBorder(8);
-            mMixdownPrefsPanel =
-               safenew sync::MixdownPrefsPanel { S.GetParent(), true };
-            mMixdownPrefsPanel->SetFrequency(MixdownGenerationFrequency.Read());
-
-            mFrequencySubscription =
-               mMixdownPrefsPanel
-                  ->Subscribe([](auto& freq) { MixdownGenerationFrequency.Write(freq.Frequency); });
-
-            S.AddWindow(mMixdownPrefsPanel, wxEXPAND);
          }
          S.EndStatic();
 
@@ -221,7 +204,6 @@ public:
    }
 
 private:
-   sync::MixdownPrefsPanel* mMixdownPrefsPanel {};
    wxTextCtrl* mCloudProjectsSavePath {};
    Observer::Subscription mFrequencySubscription;
 

@@ -23,7 +23,6 @@
 #include "ui/dialogs/CloudLocationDialog.h"
 #include "ui/dialogs/CloudProjectPropertiesDialog.h"
 #include "ui/dialogs/LinkFailedDialog.h"
-#include "ui/dialogs/MixdownPropertiesDialog.h"
 #include "ui/dialogs/SyncInBackroundDialog.h"
 #include "ui/dialogs/SyncSucceededDialog.h"
 
@@ -169,9 +168,6 @@ class IOExtension final : public ProjectFileIOExtension
          result.first == CloudProjectPropertiesDialog::Action::SaveLocally)
          // Just let the things flow as usual
          return OnSaveAction::Continue;
-
-      // Adjust the mix down generation rate (if needed)
-      MixdownPropertiesDialog::ShowIfNeeded(parent);
 
       if (CreateSnapshot(project, result.second) == OnSaveAction::Cancelled)
          return OnSaveAction::Cancelled;
