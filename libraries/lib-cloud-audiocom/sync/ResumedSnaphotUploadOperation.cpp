@@ -236,7 +236,7 @@ private:
                blockResponseResult.Code != SyncResultCode::ConnectionFailed &&
                blockResponseResult.Code != SyncResultCode::Cancelled)
                CloudProjectsDatabase::Get().RemovePendingProjectBlock(
-                  mProjectId, mSnapshotId, block.Id);
+                  mProjectId, block.Id);
 
             mProjectCloudExtension.OnBlockUploaded(
                *this, block.Hash,
@@ -315,7 +315,11 @@ private:
       if (mPendingProjectBlobData.has_value())
       {
          if (syncState.FileUrls.UploadUrl.empty())
+         {
             mPendingProjectBlobData = {};
+            CloudProjectsDatabase::Get().RemovePendingProjectBlob(
+               mProjectId, mSnapshotId);
+         }
          else
          {
             mPendingProjectBlobData->UploadUrl  = syncState.FileUrls.UploadUrl;
@@ -328,24 +332,29 @@ private:
       for (const auto& urls : syncState.MissingBlocks)
          urlsLookup.emplace(urls.Id, urls);
 
+      for (auto& block : mPendingProjectBlocks)
+      {
+         auto it = urlsLookup.find(block.BlockHash);
+
+         if (it == urlsLookup.end())
+         {
+            CloudProjectsDatabase::Get().RemovePendingProjectBlock(
+               mProjectId, block.BlockId);
+
+            continue;
+         }
+
+         block.UploadUrl  = urlsLookup[block.BlockHash].UploadUrl;
+         block.ConfirmUrl = urlsLookup[block.BlockHash].SuccessUrl;
+         block.FailUrl    = urlsLookup[block.BlockHash].FailUrl;
+      }
+
       mPendingProjectBlocks.erase(
          std::remove_if(
             mPendingProjectBlocks.begin(), mPendingProjectBlocks.end(),
             [&urlsLookup](auto& block)
             { return urlsLookup.find(block.BlockHash) == urlsLookup.end(); }),
          mPendingProjectBlocks.end());
-      
-      for (auto& block : mPendingProjectBlocks)
-      {
-         auto it = urlsLookup.find(block.BlockHash);
-
-         if (it == urlsLookup.end())
-            continue;
-
-         block.UploadUrl  = urlsLookup[block.BlockHash].UploadUrl;
-         block.ConfirmUrl = urlsLookup[block.BlockHash].SuccessUrl;
-         block.FailUrl = urlsLookup[block.BlockHash].FailUrl;
-      }
    }
 
    void MarkSnapshotSynced()

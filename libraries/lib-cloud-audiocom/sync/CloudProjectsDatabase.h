@@ -124,7 +124,7 @@ public:
    void AddPendingProjectBlocks(
       const std::vector<PendingProjectBlockData>& blockData);
    void RemovePendingProjectBlock(
-      std::string_view projectId, std::string_view snapshotId, int64_t blockId);
+      std::string_view projectId, int64_t blockId);
    void RemovePendingProjectBlocks(
       std::string_view projectId, std::string_view snapshotId);
    std::vector<PendingProjectBlockData> GetPendingProjectBlocks(

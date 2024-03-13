@@ -544,7 +544,7 @@ void CloudProjectsDatabase::AddPendingProjectBlocks(
 }
 
 void CloudProjectsDatabase::RemovePendingProjectBlock(
-   std::string_view projectId, std::string_view snapshotId, int64_t blockId)
+   std::string_view projectId, int64_t blockId)
 {
    auto connection = GetConnection();
 
@@ -552,12 +552,12 @@ void CloudProjectsDatabase::RemovePendingProjectBlock(
       return;
 
    auto statement = connection->CreateStatement(
-      "DELETE FROM pending_project_blocks WHERE project_id = ? AND snapshot_id = ? AND block_id = ?");
+      "DELETE FROM pending_project_blocks WHERE project_id = ? AND block_id = ?");
 
    if (!statement)
       return;
 
-   statement->Prepare(projectId, snapshotId, blockId).Run();
+   statement->Prepare(projectId, blockId).Run();
 }
 
 void CloudProjectsDatabase::RemovePendingProjectBlocks(
