@@ -404,6 +404,17 @@ std::string Serialize(const ProjectForm& form)
    return buffer.GetString();
 }
 
+std::optional<ProjectSyncState>
+DeserializeProjectSyncState(const std::string& data)
+{
+   ProjectSyncState result;
+
+   if (Deserialize(data, result))
+      return std::move(result);
+
+   return {};
+}
+
 std::optional<CreateSnapshotResponse>
 DeserializeCreateSnapshotResponse(const std::string& data)
 {

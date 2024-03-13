@@ -145,6 +145,9 @@ struct NetworkStats final
 
 std::string Serialize(const ProjectForm& form);
 
+std::optional<ProjectSyncState>
+DeserializeProjectSyncState(const std::string& data);
+
 std::optional<CreateSnapshotResponse>
 DeserializeCreateSnapshotResponse(const std::string& data);
 std::optional<PaginatedProjectsResponse>
