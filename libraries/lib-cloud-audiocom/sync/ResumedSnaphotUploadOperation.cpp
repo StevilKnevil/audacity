@@ -11,6 +11,7 @@
 
 #include "ResumedSnaphotUploadOperation.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -27,14 +28,52 @@
 #include "SampleBlock.h"
 #include "WaveTrack.h"
 
+#include "DateTimeConversions.h"
+#include "FromChars.h"
 #include "IResponse.h"
 #include "NetworkManager.h"
 #include "Request.h"
+#include "UriParser.h"
 
 namespace audacity::cloud::audiocom::sync
 {
 namespace
 {
+
+bool IsUrlExpired(const std::string& url)
+{
+   const auto parsedUri   = ParseUri(url);
+   const auto parsedQuery = ParseUriQuery(parsedUri.Query);
+
+   const auto amzDateIt = parsedQuery.find("X-Amz-Date");
+
+   if (amzDateIt == parsedQuery.end())
+      return false;
+
+   SystemTime time;
+
+   if (!ParseISO8601Date(std::string(amzDateIt->second), &time))
+      return false;
+
+   const auto amzExpiresIt = parsedQuery.find("X-Amz-Expires");
+
+   if (amzExpiresIt == parsedQuery.end())
+      return false;
+
+   int64_t expiresSeconds;
+
+   auto expiresParseResult = FromChars(
+      amzExpiresIt->second.data(),
+      amzExpiresIt->second.data() + amzExpiresIt->second.size(),
+      expiresSeconds);
+
+   if (expiresParseResult.ec != std::errc {})
+      return false;
+
+   return (time + std::chrono::seconds { expiresSeconds }) <
+          std::chrono::system_clock::now();
+}
+
 class ResumedSnaphotUploadOperation final :
     public ProjectUploadOperation,
     public std::enable_shared_from_this<ResumedSnaphotUploadOperation>
@@ -77,6 +116,20 @@ public:
          cloudProjectsDatabase.GetPendingProjectBlocks(projectId, snapshotId);
 
       const int64_t totalBlocks = operation->mPendingProjectBlocks.size();
+
+      if (operation->mPendingProjectBlobData)
+      {
+         operation->mHasExpiredUrls =
+            IsUrlExpired(operation->mPendingProjectBlobData->UploadUrl);
+      }
+
+      for (const auto& block : operation->mPendingProjectBlocks)
+      {
+         if (operation->mHasExpiredUrls)
+            break;
+
+         operation->mHasExpiredUrls = IsUrlExpired(block.UploadUrl);
+      }
 
       projectCloudExtension.OnSyncResumed(
          operation, totalBlocks,
@@ -180,8 +233,7 @@ private:
                return;
 
             if (
-               blockResponseResult.Code !=
-                  SyncResultCode::ConnectionFailed &&
+               blockResponseResult.Code != SyncResultCode::ConnectionFailed &&
                blockResponseResult.Code != SyncResultCode::Cancelled)
                CloudProjectsDatabase::Get().RemovePendingProjectBlock(
                   mProjectId, mSnapshotId, block.Id);
@@ -208,16 +260,98 @@ private:
 
    void Start() override
    {
-      if (mPendingProjectBlobData.has_value())
+      if (mHasExpiredUrls)
+         RefreshUrls();
+      else if (mPendingProjectBlobData.has_value())
          UploadSnapshot();
       else
          UploadBlocks();
    }
 
+   void RefreshUrls()
+   {
+      using namespace network_manager;
+      Request request { GetServiceConfig().GetSnapshotSyncUrl(
+         mProjectId, mSnapshotId) };
+
+      SetCommonHeaders(request);
+
+      auto response = NetworkManager::GetInstance().doGet(request);
+
+      response->setRequestFinishedCallback(
+         [this, response, weakThis = weak_from_this()](auto)
+         {
+            auto strongThis = weakThis.lock();
+            if (!strongThis)
+               return;
+
+            if (response->getError() != NetworkError::NoError)
+            {
+               FailSync(DeduceUploadError(*response));
+               return;
+            }
+
+            auto syncState =
+               DeserializeProjectSyncState(response->readAll<std::string>());
+
+            if (!syncState)
+            {
+               FailSync(
+                  MakeClientFailure(XO("Failed to deserialize the response")));
+               return;
+            }
+
+            UpdateUrls(*syncState);
+
+            if (mPendingProjectBlobData.has_value())
+               UploadSnapshot();
+            else
+               UploadBlocks();
+         });
+   }
+
+   void UpdateUrls(const ProjectSyncState& syncState)
+   {
+      if (mPendingProjectBlobData.has_value())
+      {
+         if (syncState.FileUrls.UploadUrl.empty())
+            mPendingProjectBlobData = {};
+         else
+         {
+            mPendingProjectBlobData->UploadUrl  = syncState.FileUrls.UploadUrl;
+            mPendingProjectBlobData->ConfirmUrl = syncState.FileUrls.SuccessUrl;
+            mPendingProjectBlobData->FailUrl    = syncState.FileUrls.SuccessUrl;
+         }
+      }
+
+      std::unordered_map<std::string, UploadUrls> urlsLookup;
+      for (const auto& urls : syncState.MissingBlocks)
+         urlsLookup.emplace(urls.Id, urls);
+
+      mPendingProjectBlocks.erase(
+         std::remove_if(
+            mPendingProjectBlocks.begin(), mPendingProjectBlocks.end(),
+            [&urlsLookup](auto& block)
+            { return urlsLookup.find(block.BlockHash) == urlsLookup.end(); }),
+         mPendingProjectBlocks.end());
+      
+      for (auto& block : mPendingProjectBlocks)
+      {
+         auto it = urlsLookup.find(block.BlockHash);
+
+         if (it == urlsLookup.end())
+            continue;
+
+         block.UploadUrl  = urlsLookup[block.BlockHash].UploadUrl;
+         block.ConfirmUrl = urlsLookup[block.BlockHash].SuccessUrl;
+         block.FailUrl = urlsLookup[block.BlockHash].FailUrl;
+      }
+   }
+
    void MarkSnapshotSynced()
    {
       using namespace network_manager;
-      Request request(mConfirmationUrl);
+      Request request { mConfirmationUrl };
 
       SetCommonHeaders(request);
 
@@ -274,6 +408,8 @@ private:
    std::shared_ptr<MissingBlocksUploader> mMissingBlocksUploader;
 
    std::atomic<bool> mCompleted { false };
+
+   bool mHasExpiredUrls { false };
 }; // class ResumedProjectUploadOperation
 
 } // namespace
