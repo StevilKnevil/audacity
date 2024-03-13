@@ -485,19 +485,19 @@ CloudProjectsDatabase::GetPendingProjectBlob(
    {
       PendingProjectBlobData data;
 
-      if (!row.Get(1, data.ProjectId))
+      if (!row.Get(0, data.ProjectId))
          return {};
 
-      if (!row.Get(2, data.SnapshotId))
+      if (!row.Get(1, data.SnapshotId))
          return {};
 
-      if (!row.Get(3, data.UploadUrl))
+      if (!row.Get(2, data.UploadUrl))
          return {};
 
-      if (!row.Get(4, data.ConfirmUrl))
+      if (!row.Get(3, data.ConfirmUrl))
          return {};
 
-      if (!row.Get(5, data.FailUrl))
+      if (!row.Get(4, data.FailUrl))
          return {};
 
       const auto size = row.GetColumnBytes(6);
