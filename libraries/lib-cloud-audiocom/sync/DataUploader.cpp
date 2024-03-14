@@ -267,6 +267,8 @@ void DataUploader::Upload(
       *this, cancellationContex, target, std::move(filePath),
       audacity::network_manager::common_content_types::ApplicationXOctetStream,
       std::move(callback), std::move(progressCallback)));
+
+   mResponses.back()->PerformUpload(RetriesCount);
 }
 
 void DataUploader::RemoveResponse(UploadOperation& response)

@@ -279,8 +279,6 @@ void UploadMixdown(
       project, UploadMode::Normal,
       [&project, onComplete = std::move(onComplete)](const auto& response)
       {
-         auto& projectCloudExtension = ProjectCloudExtension::Get(project);
-
          auto cancellationContext = concurrency::CancellationContext::Create();
 
          auto progressDialog = BasicUI::MakeProgress(
@@ -301,29 +299,39 @@ void UploadMixdown(
 
          mixdownUploader->SetUrls(response.SyncState.MixdownUrls);
 
-         auto subscription = projectCloudExtension.SubscribeStatusChanged(
-            [progressDialog = progressDialog.get(), mixdownUploader,
-             cancellationContext](const CloudStatusChangedMessage& message)
+         BasicUI::CallAfter(
+            [&project,
+             progressDialog = std::shared_ptr { std::move(progressDialog) },
+             mixdownUploader, cancellationContext, onComplete]() mutable
             {
-               if (message.Status != ProjectSyncStatus::Failed)
-                  return;
+               auto& projectCloudExtension =
+                  ProjectCloudExtension::Get(project);
 
-               cancellationContext->Cancel();
-            },
-            true);
+               auto subscription = projectCloudExtension.SubscribeStatusChanged(
+                  [progressDialog = progressDialog.get(), mixdownUploader,
+                   cancellationContext](
+                     const CloudStatusChangedMessage& message)
+                  {
+                     if (message.Status != ProjectSyncStatus::Failed)
+                        return;
 
-         auto future = mixdownUploader->GetResultFuture();
+                     cancellationContext->Cancel();
+                  },
+                  true);
 
-         while (future.wait_for(std::chrono::milliseconds(50)) !=
-                std::future_status::ready)
-            BasicUI::Yield();
+               auto future = mixdownUploader->GetResultFuture();
 
-         auto result = future.get();
+               while (future.wait_for(std::chrono::milliseconds(50)) !=
+                      std::future_status::ready)
+                  BasicUI::Yield();
 
-         progressDialog.reset();
+               auto result = future.get();
 
-         if (onComplete)
-            onComplete(project, result.State);
+               progressDialog.reset();
+
+               if (onComplete)
+                  onComplete(project, result.State);
+            });
       });
 }
 
