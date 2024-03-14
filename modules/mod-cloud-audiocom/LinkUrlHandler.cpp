@@ -28,5 +28,8 @@ auto subscription = URLSchemesRegistry::Get().Subscribe(
 
       if (sync::HandleProjectLink(message.url))
          return;
+
+      if (sync::HandleMixdownLink(message.url))
+         return;
    });
 }

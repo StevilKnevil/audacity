@@ -135,7 +135,7 @@ void LogTransferStats(TransferStats stats)
 
 } // namespace
 
-void OpenProjectFromCloud(
+AudacityProject* OpenProjectFromCloud(
    AudacityProject* potentialTarget, std::string_view projectId,
    std::string_view snapshotId, CloudSyncService::SyncMode mode)
 {
@@ -149,7 +149,7 @@ void OpenProjectFromCloud(
                                    &ProjectWindow::Get(*potentialTarget) :
                                    nullptr };
       dialog.ShowModal();
-      return;
+      return nullptr;
    }
 
    auto progressDialog = MakeProgress();
@@ -167,18 +167,17 @@ void OpenProjectFromCloud(
       GetConfilctResolution(potentialTarget, result);
 
    if (conflictResolution == ConflictResolution::Stop)
-      return;
+      return nullptr;
 
    if (conflictResolution == ConflictResolution::Remote)
    {
-      OpenProjectFromCloud(
+      return OpenProjectFromCloud(
          potentialTarget, projectId, snapshotId,
          CloudSyncService::SyncMode::ForceOverwrite);
-      return;
    }
 
    if (HandleFailure(result))
-      return;
+      return nullptr;
 
    auto project = ProjectManager::OpenProject(
       GetPotentialTarget(), audacity::ToWXString(result.ProjectPath), true,
@@ -186,13 +185,15 @@ void OpenProjectFromCloud(
 
    if (project != nullptr && mode == CloudSyncService::SyncMode::ForceNew)
       ProjectFileIO::Get(*project).MarkTemporary();
+
+   return project;
 }
 
-void OpenProjectFromCloud(
+AudacityProject* OpenProjectFromCloud(
    AudacityProject* potentialTarget, std::string_view projectId,
    std::string_view snapshotId, bool forceNew)
 {
-   OpenProjectFromCloud(
+   return OpenProjectFromCloud(
       potentialTarget, projectId, snapshotId,
       forceNew ? CloudSyncService::SyncMode::ForceNew :
                  CloudSyncService::SyncMode::Normal);
@@ -267,6 +268,56 @@ bool HandleProjectLink(std::string_view uri)
       snapshotId != queryParameters.end() ? snapshotId->second :
                                             std::string_view {},
       forceNew);
+
+   return true;
+}
+
+bool HandleMixdownLink(std::string_view uri)
+{
+   ASSERT_MAIN_THREAD();
+
+   const auto parsedUri = ParseUri(uri);
+
+   if (parsedUri.Scheme != "audacity" || parsedUri.Host != "generate-audio")
+      return false;
+
+   const auto queryParameters = ParseUriQuery(parsedUri.Query);
+
+   if (queryParameters.empty())
+      return false;
+
+   const auto projectId = queryParameters.find("projectId");
+
+   if (projectId == queryParameters.end())
+      return false;
+
+   const auto begin = AllProjects {}.begin(), end = AllProjects {}.end();
+   auto iter = std::find_if(
+      begin, end,
+      [&](const AllProjects::value_type& ptr)
+      {
+         return projectId->second ==
+                ProjectCloudExtension::Get(*ptr).GetCloudProjectId();
+      });
+
+   const bool hasOpenProject = iter != end;
+
+   const auto project = hasOpenProject ?
+                           iter->get() :
+                           OpenProjectFromCloud(
+                              GetPotentialTarget(), projectId->second,
+                              std::string_view {}, false);
+
+   if (project == nullptr)
+      return false;
+
+   UploadMixdown(
+      *project,
+      [hasOpenProject](AudacityProject& project, MixdownState state)
+      {
+         if (!hasOpenProject)
+            ProjectWindow::Get(project).Close(true);
+      });
 
    return true;
 }

@@ -20,7 +20,7 @@ namespace audacity::cloud::audiocom::sync
 class UploadUrls;
 enum class MixdownState : uint32_t;
 
-void OpenProjectFromCloud(
+AudacityProject* OpenProjectFromCloud(
    AudacityProject* potentialTarget, std::string_view projectId,
    std::string_view snapshotId, bool forceNew);
 
@@ -28,6 +28,8 @@ bool SyncCloudProject(
    AudacityProject& project, std::string_view path, bool force = false);
 
 bool HandleProjectLink(std::string_view link);
+
+bool HandleMixdownLink(std::string_view link);
 
 void UploadMixdown(
    AudacityProject& project,
