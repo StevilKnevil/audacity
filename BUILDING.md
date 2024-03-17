@@ -97,14 +97,16 @@ You will also be able to change to the scripts directory and run ./graph.pl to g
    Set **Where to build the binaries** to the location you want to place your build in. It is preferred that this location is not within the directory with the source code.
 
 3. Press **Configure**. You can choose which version of Visual Studio to use and the platform to build for in the pop-up. We support **x64** and **Win32** platforms. The **x64** platform is a default option. Press **Finish** to start the configuration process.
+   a. In some cases this can fail when it gets to Catch2. If this happense, run `CMake.exe .` from the command line in the directory that you specified for where you want to build the binaries.
+   b. Once that completes, run Configure again in CMake GUI.
 
-4. After successful configuration, you will see `Configuring done` in the last line of the log. Press **Generate** to generate the Visual Studio project. 
+5. After successful configuration, you will see `Configuring done` in the last line of the log. Press **Generate** to generate the Visual Studio project. 
 
-5. After you see "Generating done", press **Open Project** to open the project in Visual Studio.
+6. After you see "Generating done", press **Open Project** to open the project in Visual Studio.
    
-6. Select "Build -> Build Solution".
+7. Select "Build -> Build Solution".
    
-7. You can now run and debug Audacity!
+8. You can now run and debug Audacity!
       
 Generally, steps 1-5 are only needed the first-time you configure. Then, after you've generated the solution, you can open it in Visual Studio next time. If the project configuration has changed, the IDE will invoke CMake internally. 
 
